@@ -1,0 +1,607 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{color}
+\usepackage{subcaption}
+\usepackage{xfrac}
+\usepackage{graphicx}
+\usepackage{cite} %if auctex does not prompt bibtex use "C-c C-n"
+\usepackage[margin=.75in]{geometry} %Sets margin size
+\newcommand{\vp}{\varphi}
+\newcommand{\dif}{\text{d}}
+\pagestyle{fancy}
+\begin{document}
+\lhead{APMA 990}
+\rhead{Final Project}
+\title{A Comparative Study of the TV and Ginzburg--Landau Inpainting Models}
+\date{\today}
+\author{Ray Walsh\\
+301257297}
+ \maketitle
+% \doublespacing
+
+\section{Introduction}
+The term inpainting refers to filling in a portion of an image or film such that the result looks as natural to the original image as possible. Historically the act of inpainting has typically been carried out by artists but in more recent years the idea of digital inpainting has arose. The first publication regarding digital inpainting appeared in 2000 by Bertalmio et al.\ \cite{Bert} laying the groundwork for many models to come. Some of the more basic applications of digital inpainting speak for themselves such as the ability to repair damaged photos and films where hiring an artist to complete the job would cost both time and financial resources. In addition, it gives the ability to remove objects such as text from images. A couple more advanced applications of inpainting are digital zooming and edge based image coding \cite{ChanShen}.   
+
+Image inpainting is a rather complex mathematical endeavour given that image functions typically lie outside the Sobolev category. Images containing textures and patterns often require more sophisticated solutions such as distributions and/or statistical tools such as Markov random chains. Most non--textured images on the other hand can be effectively approximated by functions of bounded variation as well as solutions to PDE models as we will see later. As a result of these complexities researchers are forced to develop methods focusing on specific classes of images also known as low--level models \cite{ChanShen}. In this project we focus on two such methods for inpainting local damages of non--textured images. The models we focus on are founded on variational principals generating PDE models for which the regularity of solutions is too restrictive to capture textures.
+
+In the context of image processing local refers to the method not relying on global information such as patters and/or scales. As an example, borrowed from \cite{ChanShen}, imagine we have a black and white checkerboard where we wish to inpaint a missing white square. Surrounding this white square on all edges are black squares. If focus solely on the cross created by these black squares the natural inpainting is to fill the center with black to complete the cross. However, if we instead recognize that this structure is embedded within a checkerboard the appropriate inpainting would be to fill the center with white. This example effectively highlights the necessity of global information for a high--level inpainting method. The issue with this however is that digitally recognizing global features such as patters is quite difficult due to the many scales upon which they can exist \cite{ChanShen}. As a result the methods we focus on in this project are of local character and are ill--suited for regions requiring knowledge of global features. 
+
+The remainder of this project is laid out as follows. We begin in section \ref{sec:TVMod} with introducing the TV model for inpainting founded on three fundamental principals to be defined. Once we have introduced the model we give one possible discretization followed by a demonstration of some of its properties via inpainting some binary images. Next we introduce the Ginzburg--Landau model primarily motivated by properties of its solutions. Again, we will then proceed to give a discretization of this method followed by a demonstration of some of its properties through binary images. In section \ref{sec:GreyScale} we compare the result of both models on a couple of grey scale images. Finally, we end off with applying the Ginzburg--Landau model to a couple of color images. As we will see the Ginzburg--Landau model has structural generalization allowing the three RGB channels to be coupled when inpainting colored images.
+
+\section{TV Inpainting}
+\label{sec:TVMod}
+The use of TV--regularization as an algorithm for inpainting was first introduced in 2002 by Chan and Shen \cite{ChanShen}. The original publication of the TV--regularization model however was written by Rudin et al.\ \cite{RudinOsherFatemi} in 1992 and was originally intended as a model for image denoising. The interpretation of TV--regularization as an algorithm for inpainting is based on three fundamental principals outlined in \cite{ChanShen}:
+\begin{enumerate}
+\item The model itself should be local. As indicated in the introduction global image features such as scales and patters are difficult for digital algorithms to pick up and we are thus focusing solely on low--level local models. For our purposes local here essentially means our inpainting result is determined purely from boundary data. 
+
+\item The model should restore narrow broken smooth edges. Connecting broken edges is essential to obtaining a quality inpainting in the eyeball--norm as well as digital object recognition and segmentation.
+
+\item The model should be robust to noise. The motivation for this point is that humans can easily distinguish objects and ``fill the gaps'' in an image with a moderate amount of noise. We thus expect the same of the algorithm. For our purposes however we will not be too concerned with the denoising aspect of the model and will instead focus on the inpainting.
+\end{enumerate}
+
+Building from the above principals Chan and Shen propose the following unconstrained optimization model:
+\begin{quote}
+  \textit{Let \(D\) be an inpainting domain with a piecewise smooth boundary \(\Gamma\) and \(E\) be any fixed closed domain in the compliment of \(D\) such that \(\Gamma,\) the boundary of \(D,\) lies in the interior of \(E\cup D.\) See figure \ref{fig:TVDomain} for diagram. The inpainting model is to then find the minimizer of the following energy functional}
+  \begin{align}
+    En(I;I^0) = \int_{E\cup D}|\nabla I|\dif A + \frac{\lambda}{2}\int_E\left|I-I^0\right|^2\dif A.
+    \label{eq:TVOpt}
+  \end{align}
+\end{quote}
+\begin{figure}[tb!]
+  \centering
+  \includegraphics[width=0.3\linewidth]{figures/TVDomain.png}
+  \caption{The TV inpainting model domain. The model looks for the ``best'' inpainting, with respect to the TV--norm, in \(D\) and denoises the original image in \(E.\) Above diagram taken directly from \cite{ChanShen}.}
+  \label{fig:TVDomain}
+\end{figure}
+The purpose of the domain \(E\) is to define a region for denoising. For an image containing noise everywhere we simply choose \(E\) to be exactly the compliment of \(D.\) If we base the design of an inpainting algorithm solely on the three points above then the above model is a good choice. The model itself is local as it simply minimizes the TV--norm over \(D\) and \(E\) and does not incorporate global features such as patters and/or scales. As mention previously the model inpaints the domain \(D\) by minimizing the TV--norm allowing ideal edges to exist and thus satisfying the second property. Finally, the model is clearly robust to noise as it simultaneously inpaints the image as well as denoises in a specified region surrounding the inpainting domain.
+
+To solve the above model \eqref{eq:TVOpt} numerically, rather than working with the optimization problem directly, we derive the Euler--Lagrange equations. To do so we simply differentiate \(En(I+\epsilon h;I^0)\) with respect to \(\epsilon\) and evaluate at \(\epsilon=0\) to arrive at the following PDE model:
+\begin{equation}
+  \label{eq:TVPDE}
+  \begin{gathered}
+    -\nabla\cdot\left(\frac{\nabla I}{\left|\nabla I\right|}\right) + \lambda_e\left(I-I^0\right)=0\\
+    \left.\frac{\dif I}{\dif \hat{n}}\right|_{\partial E} = 0
+  \end{gathered}
+\end{equation}
+where
+\begin{align*}
+  \lambda_e =
+  \begin{cases}
+    \lambda, &\vec{x}\in E\\
+    0, &\vec{x}\in D
+  \end{cases}.
+\end{align*}
+In the absence of a denoising domain \(E,\) \textit{i.e.}\ purely inpainting, the model reduces to
+\begin{gather*}
+  -\nabla\cdot\left(\frac{\nabla I}{\left|\nabla I\right|}\right)=0\\
+  \left.I\right|_{\partial D} = \left.I^0\right|_{\partial D}.
+\end{gather*}
+To solve the Euler--Lagrange equations \eqref{eq:TVPDE} numerically we can either solve the time--independent problem directly or we can evolve the following gradient descent equations to steady--state
+\begin{gather*}
+   I_t = \nabla\cdot\left(\frac{\nabla I}{\left|\nabla I\right|}\right) - \lambda_e\left(I-I^0\right)\\
+    \left.\frac{\dif I}{\dif \hat{n}}\right|_{\partial E} = 0.
+\end{gather*}
+Based on the recommendation in Chan and Shen \cite{ChanShen} however we will find the steady solution directly by solving \eqref{eq:TVPDE} as time--marching the gradient descent equations is typically slow due to stability constraints \cite{ChanShen}. We should mention here however that we found the discretization of Chan and Shen can struggle with creating ideal edges in certain scenarios and although it is less efficient a discretization of the gradient descent equations may yield more acceptable results. Alternatively, one could also use a different discretization of the time--independent model as well which may yield more acceptable results.   
+
+\subsection{Numerical Discretization of the TV Inpainting Model}
+\label{sec:NumDisc}
+As mentioned in the previous section we will be looking for the steady solution directly meaning that we will be solving \eqref{eq:TVPDE} directly. We will begin by describing the spatial discretization of the curvature operator and from there develop a Jacobi iteration in order to compute the solution. Note that we are using precisely the discretization outlined in the original publication of this method \cite{ChanShen}. 
+
+\begin{figure}[tb!]
+  \centering
+  \includegraphics[width=0.4\linewidth]{figures/TVDiscretization.png}
+  \caption{Diagram labeling the target pixel \(O\) with its corresponding neighbours \(N,E,S,W.\) The ``middle'' pixel between the target \(O\) and one of its neighbours is labeled with the corresponding lowercase letter. Also indicated, for clarity, are the quantities computed at each ``middle'' pixel. Above diagram taken directly from \cite{ChanShen}.}
+  \label{fig:TVDiscretization}
+\end{figure}
+  
+The node labeling scheme we use to describe the discretization can be see in figure \ref{fig:TVDiscretization}. Essentially we are labeling the target pixel \(O\) and each of its neighbours via the cardinal directions \(N,E,S,W.\) The corresponding diagonal neighbours are labeled \(NE,SE,SW,NW.\) In addition to these nodes we will also be computing at the ``middle'' nodes labeled with the corresponding lowercase letter as depicted in figure \ref{fig:TVDiscretization}. Of course, the ``middle'' pixel doesn't actually exist, hence the quotations around middle, but from a numerical perspective we can still compute what the value would be there, interpreting the image as a mathematical function, allowing us to use a more compact stencil. The essential idea is the following: 
+
+We are trying to compute \(\nabla\cdot\left(\frac{\nabla I}{|\nabla I|}\right) = \frac{\partial}{\partial x}\left(\frac{1}{|\nabla I|}\frac{\partial I}{\partial x}\right) + \frac{\partial}{\partial y}\left(\frac{1}{|\nabla I|}\frac{\partial I}{\partial y}\right).\) Computing each of the interior objects, \(\frac{I_x}{|\nabla I|}\) and \(\frac{I_y}{|\nabla I|},\) at the appropriate ``middle'', as depicted in figure \ref{fig:TVDiscretization}, enables us to take the exterior \(\frac{\partial}{\partial x}\) and \(\frac{\partial}{\partial y}\) via center differences. Again I draw your attention to figure \ref{fig:TVDiscretization} to make this idea clear. The corresponding \(I_x\) and \(I_y\) can easily be computed at the ``middle'' pixel via centered differences and for the \(|\nabla I|\) we use center differences for the appropriate derivative, either \(x\) or \(y\) depending on the pixel, and use an average for the other. Note that this averaging could likely be the source of this discretizations difficulty with capturing ideal edges. This leads to the following discretizations for the gradient at each ``middle'' pixel:
+\begin{align*}
+  |\nabla I| &= \sqrt{I_x^2 + I_y^2}\\
+  |\nabla I|_e &\sim \sqrt{(I_E - I_O)^2 + \left(\frac{\frac{I_{NE} - I_{SE}}{2} + \frac{I_N-I_S}{2}}{2}\right)^2}\\
+  |\nabla I|_w &\sim \sqrt{(I_O - I_W)^2 + \left(\frac{\frac{I_{NW} - I_{SW}}{2} + \frac{I_N-I_S}{2}}{2}\right)^2}\\
+  |\nabla I|_n &\sim \sqrt{\left(\frac{\frac{I_{NE} - I_{NW}}{2} + \frac{I_E-I_W}{2}}{2}\right)^2 + (I_N - I_O)^2}
+\end{align*}
+\begin{align*}
+  |\nabla I|_s &\sim \sqrt{\left(\frac{\frac{I_{SE} - I_{SW}}{2} + \frac{I_E-I_W}{2}}{2}\right)^2 + (I_O - I_S)^2}.
+\end{align*}
+Note that we have taken the mesh spacing \(h=1\) as is usually done in image processing. Using the above discretization formulas we can now write the discretization of the curvature operator as
+\begin{align*}
+  \nabla\cdot\left(\frac{\nabla I}{|\nabla I|}\right)\sim \underbrace{\left(\frac{1}{|\nabla I|_e}(I_E - I_O) - \frac{1}{|\nabla I|_w}(I_O - I_W)\right)}_{\frac{\partial}{\partial x}\frac{I_x}{|\nabla I|}} + \underbrace{\left(\frac{1}{|\nabla I|_n}(I_N - I_O) - \frac{1}{|\nabla I|_s}(I_O - I_S)\right)}_{\frac{\partial}{\partial y}\frac{I_y}{|\nabla I|}}
+\end{align*}
+giving the full point--wise discretization of \eqref{eq:TVPDE} as
+\begin{align*}
+  \left(\frac{1}{|\nabla I|_e}(I_O - I_E) + \frac{1}{|\nabla I|_w}(I_O - I_W)\right) + \left(\frac{1}{|\nabla I|_n}(I_O - I_N) + \frac{1}{|\nabla I|_s}(I_O - I_S)\right) + \lambda_e(O)(I_O - I_O^0) = 0.
+\end{align*}
+Isolating \(I_O\) on one side of the equation yields the following
+\begin{align*}
+  I_O = h_{OE}I_E + h_{OW}I_W + h_{ON}I_N + h_{OS}I_S + h_{O0}I_O^0
+\end{align*}
+where
+\begin{gather*}
+  h_{OP} = \frac{1}{C|\nabla I|_p}, \quad h_{O0} = \frac{\lambda_e(O)}{C}\\
+  C = \frac{1}{|\nabla I|_e} + \frac{1}{|\nabla I|_w} + \frac{1}{|\nabla I|_n} + \frac{1}{|\nabla I|_s} + \lambda_e.
+\end{gather*}
+We then have the following Jacobi iteration for the solution at \(I_O\)
+\begin{align*}
+  I_O^{n+1} = h_{OE}^nI_E^n + h_{OW}^nI_W^n + h_{ON}^nI_N^n + h_{OS}^nI_S^n + h_{O0}^nI_O^0.
+\end{align*}
+To incorporate the boundary conditions into our discretization we simply compute everywhere on the interior of \(E\cup D\) and repeat values next to the boundary onto the boundary for a first order implementation. If we are strictly inpainting, \textit{i.e.}\ \(E\) is empty, then we simply compute on the interior using the boundary values of the original image \(I^0.\)
+
+One problem with the above discretization is that it becomes undefined when \(|\nabla I| = 0.\) To get around this issue we use the common trick of lifting the gradient by a small factor of \(\epsilon.\) That is instead of using \(|\nabla I|\) as written in the above discretization we simply replace it with \(|\nabla I|_\epsilon = \sqrt{\epsilon^2 + |\nabla I|^2}.\)
+
+\subsection{Motivating the TV model through visual perception}
+
+Now that we have discussed the numerical implementation we are now in a position to further motivate the TV model through a particularly interesting example in visual perception. In the original publication of the TV method Chan and Shen use the example of what they call Kaniza's entangled man, as seen in figure \ref{fig:EM}, a simplified version of Kaniza's entangled man and woman \cite{Kan}.
+\begin{figure}[tb!]
+  \centering
+  \includegraphics[width=0.4\linewidth]{figures/EntangledMan.png}
+  \caption{Notice that in the circled region our visual perception conflicts with our global interpretation of the image. Above diagram taken directly from \cite{ChanShen}.}
+  \label{fig:EM}
+\end{figure}
+The fundamental idea with this image is that although we can clearly interpret that this is a man behind a fence what we visually perceive is a man entangled in a fence. So what we have here is essentially a visual human inpainting problem. We have an ambiguous region of the image that our minds are forced to visually interpret and what's interesting is that our vision strongly prefers the version where the torso of the man is in front of the image. We can now ask the question of how the TV inpainting algorithm interprets the ambiguous region. What we will find is that the TV algorithm agrees with our visual perception.
+
+To examine the TV models perception of this image we can simplify the image to the one depicted in figure \ref{fig:SimEM}. Clearly, if we keep both colors the same, as in the original, the method will likely fill the region \(D\) with precisely that color. Instead of this we assume both the man and the fence, referred to as \(I_b\) and \(I_f\) respectively, are at a grey scale value of 0.5 and we perturb by a value of \(\epsilon\) giving \(I_b = 0.5+\epsilon\) and \(I_f = 0.5 - \epsilon\) thus forcing the method to ``choose'' a perception. Note that the above image \ref{fig:SimEM} is labeled with \(U\) instead of \(I\) this is due to the differences in notation between this project and the article. Simply replace \(U\) in the above figure with \(I\) for the consistent interpretation.
+\begin{figure}[tb!]
+  \centering
+  \includegraphics[width=0.4\linewidth]{figures/SimpleEntangledMan.png}
+  \caption{Skeleton version of the entangled man used to analyze the TV method. Above diagram taken directly from \cite{ChanShen}.}
+  \label{fig:SimEM}
+\end{figure}
+
+Before we demonstrate the numerical results of the method we can actually derive the result analytically. Recall that the TV method minimizes the TV--norm inside the inpainting region. Given that the solution or minimizer \(I_D\) for this problem is a constant, say k, and that it satisfies the maximum principle (\(I_f\leq k\leq I_b\)) \cite{ChanShen} we can easily see that
+\begin{align*}
+  \int_D|\nabla I_D| = 2l|I_f - k| + 2L|I_b - k| = 2(LI_b - lI_f) - 2(L-l)k.
+\end{align*}
+The minimizer of the above expression is then clearly \(k = I_b\) as this is a linear equation in \(k\) with negative slope. What we have just shown is that the TV method prefers the interpretation that \(I_D\) is the mans torso agreeing with our visual perception. We can also note at this point that if \(L=l\) the expression becomes independent of \(k\) and the minimizer is thus any constant value satisfying the maximum principal \(I_f\leq k\leq I_b.\) This will be worth remembering when we get to the Ginzburg--Landau model later.
+
+We can additionally verify this result numerically by running our inpainting model for this example. In figure \ref{fig:WideCross} we have the initial image to inpaint where the inpainting region is the same as that in figure \ref{fig:SimEM}. In figure \ref{fig:InpaintedWideCross} we have the inpainting result which agrees with both our analysis above as well as our visual perception.
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/WideCross.jpg}
+    \caption{Initial image to be inpainted.}
+    \label{fig:WideCross}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/TVInpaintedWideCross.jpg}
+    \caption{TV inpainted}
+    \label{fig:InpaintedWideCross}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the TV inpainting model for the ambiguous entangled man. Notice how the TV model also prefers the interpretation of the mans torso in front of the fence.}
+  \label{fig:TVWideCross}
+\end{figure}
+
+\subsection{Edge preservation in the TV model}
+Back when we first introduced the TV model one of our three principals of inpainting was the ability to restore narrow broken edges. This principal really contains two separate properties the first being that solutions can contain sharp or ideal edges and secondly the method is able to connect these. The first property should hold for solutions to the TV model since ideal edges have a finite value in the TV--norm. If we were using \(H^1\) regularization instead for example we would not expect solutions to have ideal edges as we no longer have ideal edges in our solution space. 
+
+We can verify that solutions to our model do indeed contain ideal edges by using the example in figure \ref{fig:DamagedHalf}. As we can see from the inpainted image in figure \ref{fig:InpaintedHalf} the TV model does indeed allow for ideal edges as we anticipated. In addition we also note that the TV model was able to connect the edges within the inpainting region. 
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/halfDamaged.jpg}
+    \caption{Initial image to be inpainted.}
+    \label{fig:DamagedHalf}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/halfInpainted.jpg}
+    \caption{TV inpainted}
+    \label{fig:InpaintedHalf}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the TV inpainting model for an ideal edge. Note that the results of the TV model contain ideal edges.}
+  \label{fig:TVHalf}
+\end{figure}
+
+We can further verify the method's ability to connect edges by considering an example where the edges do not propagate normal to the boundary as in the example in figure \ref{fig:DiagDamaged}. In figure \ref{fig:DiagInpainted} we have the inpainted version and as we can see the method has both connected the edges as well as maintained an ideal edge within the inpainting region as desired. Note that the methods ability to connect ideal edges can also be observed in the entangled man example from the previous section. Note here as well that the result in figure \ref{fig:DiagInpainted} was actually obtained using a discretization of the gradient descent equations not discussed here. This was done due to the Jacobi iteration's difficulty in computing ideal edges as mentioned earlier. We will see an example in the next section with an edge computed via the Jacobi iteration. Also note that the edge computed in figure \ref{fig:InpaintedHalf} was computed using the Jacobi iteration.
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/diagDamaged2.jpg}
+    \caption{Initial image to be inpainted.}
+    \label{fig:DiagDamaged}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/diagInpainted.jpg}
+    \caption{TV inpainted}
+    \label{fig:DiagInpainted}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the TV inpainting model for connecting edges.}
+  \label{fig:TVDiag}
+\end{figure}
+
+\subsection{Straight edge connecting in the TV model}
+\label{sec:EdgeShort}
+When we first derived the TV model we mentioned that we have two ways to obtain the minimizer. We can either compute the solution directly using \eqref{eq:TVPDE} or we could evolve according the gradient descent equations. The gradient descent equations can further be expressed in the form of curvature motion by multiplying the time--independent model by \(|\nabla I|\) and then writing the gradient descent equations as
+\begin{align*}
+  I_t = \nabla\cdot\left(\frac{\nabla I}{|\nabla I|}\right)|\nabla I|
+\end{align*}
+note that the solution has not changed in doing this. Thus, the solution of the TV model can be interpreted as contours evolving according to curvature motion until steady--state is reached. This is interesting from an inpainting perspective as this means that solutions will have a tendency to connect edges with straight lines \textit{i.e.}\ contours with zero curvature. Note that the contours will not disappear due to the Dirichlet boundary conditions on the inpainting domain and hence their tendency towards straight lines. 
+
+In figure \ref{fig:SquareDamaged} we have one such example demonstrating the straight edge connecting. We can see the inpainted version of this in figure \ref{fig:SquareInpainted} where we indeed see that the edges have been connected via a straight line rather that a ``squaring'' of the corner as we may expect as the desired result. Another thing we can note from this example is that the method failed to find a sharp edge inpainting. We believe that this is due to the choice of discretization summarized in section \ref{sec:NumDisc}. In the original publication of this method \cite{ChanShen} Chan and Shen state ``Experiments show that such variations [on \(|\nabla I_p|\)] sometimes work better for inpainting sharp edges in the digital setting.'' Meaning that the chosen discretization can have difficulty obtaining sharp edges. We have additionally verified that discretizations of the gradient descent equations do achieve sharper edges however, as we have mentioned earlier, this gives considerably slower convergence and we omit a discussion of this to limit the scope of this project.
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/SquareDamaged.jpg}
+    \caption{Initial image to be inpainted.}
+    \label{fig:SquareDamaged}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/SquareInpainted.jpg}
+    \caption{TV inpainted}
+    \label{fig:SquareInpainted}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the TV inpainting model for connecting edges.}
+  \label{fig:TVSquare}
+\end{figure}
+
+\section{Complex Ginzburg--Landau inpainting}
+
+The complex Ginzburg--Landau (GL) model for inpainting first appeared in official publication in 2003 \cite{GLPaper1} and in an unofficial document sometime earlier \cite{GLPaper2}. The method itself is motivated by some particularly convenient analytical properties of solutions to the GL equation. The equation itself was originally developed to describe phase transitions in superconductors at or near their critical temperature \cite{GLPaper1}. Solutions thus develop regions of little to no variation with sharp transition regions between phases making it a good model for high contrast inpainting \cite{GLPaper2}. 
+
+The equation is derived through minimizing the following energy functional first derived in \cite{OrgGL}
+\begin{align*}
+  En(I) = \frac{1}{2}\int_\Omega |-i\nabla I|^2 + \alpha|I|^2 + \frac{\beta}{2}|I|^4 \dif \Omega
+\end{align*}
+for physical constants \(\alpha\) and \(\beta.\) The minimizer of the above energy functional must satisfy the following Euler--Lagrange equation
+\begin{align}
+  \label{eq:GL}
+  \nabla^2 I + \frac{1}{\epsilon^2}(1 - |I|^2)I=0
+\end{align}
+which corresponds to the choice of \(\alpha=-\beta=-\frac{1}{\epsilon^2}\) \cite{GLPaper1}. The parameter \(\epsilon\) is known as the coherence length in the physics literature and corresponds to the width of the transition region \cite{GLPaper1}. The smaller \(\epsilon\) the sharper the transition region while bigger \(\epsilon\) will generate elongated transition regions \textit{i.e}\ blurred inpaintings. 
+
+What makes \eqref{eq:GL} particularly well suited for inpainting is that in the limit as \(\epsilon\rightarrow 0\) solutions are known to develop shockwaves and vorticies generating high contrast image inpaintings \cite{GLPaper2}. One issue however is that solutions to \eqref{eq:GL} tend towards \(|I| = \pm 1\) away from the transition region restricting image inpaintings to essentially binary values. The result of this has been verified and can be seen in \cite{GLThesis}. To get around this \cite{GLPaper2} proposes introducing an additional degree of freedom by making our image complex allowing solutions to satisfy \(|I| = \pm 1\) but with \(Re(I)\) away from \(\pm 1.\) The inpainting result will then throw away the imaginary part leaving only the real part and thus permitting non--binary image inpaintings. For an analysis of the effect of the complex component on the solution we refer the reader to the references found within \cite{GLPaper1} and \cite{GLThesis}.
+
+To use the GL inpainting model the imaginary portion of the initial image is chosen such that \(|I^0| = 1\) making \(Im(I^0) = \sqrt{1-Re(I^0)^2}\) where the real part contains the actual image values. We can then solve the complex GL equation \eqref{eq:GL} with Dirichlet boundary conditions on the inpainting domain revealing the inpainted image \(Re(I).\) Rather than working with \eqref{eq:GL} directly we instead use the following gradient descent equation as was done in the original publication \cite{GLPaper1}
+\begin{equation}
+  \label{eq:GLGD}
+  \begin{gathered}
+    I_t = \nabla^2 I + \frac{1}{\epsilon^2}\left(1-|I|^2\right)I\\
+    I|_{\partial D} = I^0|_{\partial D}.
+  \end{gathered}
+\end{equation}
+We present the numerical discretization for the above gradient descent equations in the next section.
+
+\subsection{Numerical discretization of the Ginzburg--Landau model}
+
+To discretize the gradient descent equations \eqref{eq:GLGD} we use a forward time centered space discretization as was done in the original publication \cite{GLPaper1}. The authors state that for rectangular inpainting domains they have tested implicit, semi implicit, and Fourier spectral type methods and have found no benefit in terms of stability and computation time for \(\epsilon \ll 1.\) Further, the authors provide a reference where it's argued that even for implicit schemes a timestep restriction of \(\Delta t<\mathcal{O}(\epsilon^2)\) is required \cite{GLPaper1}. For a detailed study of explicit, implicit, and semi implicit schemes as well as a stability analysis we refer the reader to \cite{GLThesis}. 
+
+Discretizing \eqref{eq:GLGD} using forward time centered space gives the following
+\begin{align*}
+  \frac{I^{n+1}_{i,j} - I^n_{i,j}}{\Delta t} = (I^n_{i-1,j} + I^n_{i+1,j} - 4I^n_{i,j} + I^n_{i,j-1} + I^n_{i,j+1}) + \frac{1}{\epsilon^2}(1-|I^n_{i,j}|^2)I^n_{i,j}
+\end{align*}
+where we have taken the spatial mesh spacing \(h=1\) as usual. This leads to the following update equation for our inpainting model:
+\begin{align*}
+  I^{n+1}_{i,j} = I^n_{i,j} + \Delta t\left[(I^n_{i-1,j} + I^n_{i+1,j} - 4I^n_{i,j} + I^n_{i,j-1} + I^n_{i,j+1}) + \frac{1}{\epsilon^2}(1-|I^n_{i,j}|^2)I^n_{i,j}\right].
+\end{align*}
+The Dirichlet boundary conditions are implemented in the natural sense \textit{i.e.} they are used directly in update equation at nodes near the boundary. Due to the time--step restriction mentioned previously we choose \(\Delta t = \frac{\epsilon^2}{4}\) for each of the examples to follow.
+
+\subsection{Inpainting the ambiguous cross}
+
+One of the canonical examples for comparing the results of inpainting algorithms is that of the ambiguous cross depicted in figure \ref{fig:ACross}. This image very closely parallels that of the entangled man example for the TV model and the idea is the same: We can ask the GL inpainting algorithm how it chooses to inpaint the ambiguous interior of the cross. Recall that for the TV model our analysis showed that for a cross where both bars have equal width the result of the TV model could be any constant value between the two bar colors. Contrast this with the result of the GL model (in figures \ref{fig:ACrossEp5}-\ref{fig:ACrossEp01}) and we see that the GL model prefers to maintain the left--right and up--down mirror symmetries. A potentially desirable feature depending on the application.  
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/Cross.jpg}
+    \caption{ambiguous cross}
+    \label{fig:ACross}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpCrossEp5.jpg}
+    \caption{GL inpainted \(\epsilon = 0.5\)}
+    \label{fig:ACrossEp5}
+  \end{subfigure}
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpCrossEp1.jpg}
+    \caption{GL inpainted \(\epsilon = 0.1\)}
+    \label{fig:ACrossEp1}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpCrossEp01.jpg}
+    \caption{GL inpainted \(\epsilon = 0.01\)}
+    \label{fig:ACrossEp01}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL model for inpainting the ambiguous cross. Notice how this method maintains left--right and up--down mirror symmetry.}
+  \label{fig:GLACross}
+\end{figure}
+
+Additionally, this example also highlights the effect of \(\epsilon\) on the inpainting algorithm. Notice that for \(\epsilon = 0.5\) the inpainting is of fairly high quality despite the slight blurring of the edges. The blurring of the edges is due to the elongated transition region imposed by the size of \(\epsilon.\) Reducing the value of \(\epsilon\) indeed gives higher contrast as mentioned earlier but at the expense of developing some rather kinky level lines. This effect is echoed in the original publication where the authors state directly that ``Using the parameter \(\epsilon>0\) we are able to compromise between blurry and high contrast models. which can be used to weaken the visibility of unwanted kinks'' \cite{GLPaper1}.
+
+In addition to the ambiguous cross example we can examine the results of the GL model on the entangled man example. The results of this can be found in figure \ref{fig:GLWideCross} and as probably expected the results mirror those of the ambiguous cross in that the inpainting maintains its mirror symmetries. Where the TV model chose an inpainting consistent with our visual perception the GL model gives an inpainting which could be described as artificial from the perspective of visual perception. Depending on the application however the preservation of the symmetry may be an important property. 
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/WideCross.jpg}
+    \caption{Entangled man example}
+    \label{fig:EME}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpWideCross.jpg}
+    \caption{GL inpainted \(\epsilon = 0.1\)}
+    \label{fig:GLInpWideCross}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL inpainting model for the ambiguous entangled man. Notice how the GL model maintains the mirror symmetries and does not choose a physically realistic interpretation.}
+  \label{fig:GLWideCross}
+\end{figure}
+
+\subsection{Ginzburg--Landau's difficulty with edge connecting}
+
+Unlike the TV model the GL model was not designed based on principals of inpainting but instead motivated by the GL equation's ability to generate high contrast inpainting. As a result one key aspect of image inpainting that GL fails for is the ability to connect smooth edges. The method does not struggle with connecting all edges but we will see with the examples in this section that it does struggle for some cases.
+
+As our first example we consider the half image example in figure \ref{fig:GLDamagedHalf}. We previously used this example for the TV model to demonstrate that solutions to the TV model contain ideal edges. The GL model on the other hand is almost solely motivated by it's ability to create ideal edges in the limit as \(\epsilon\rightarrow 0.\) Thus, what is most interesting about this example is the GL's ability to connect the ideal edge. We can see in figure \ref{fig:GLInpHalfEp8} the result of the GL model for \(\epsilon = 0.8\) and we notice two things. The first being that the GL model is indeed able to connect the edge as previously mentioned. Secondly, for this large value of \(\epsilon\) the inpainting region develops a slight blur transitioning from black to white. This blurring effect is precisely what we expect from the GL model for reasons discussed earlier. Looking at figure \ref{fig:GLInpHalfEp1} we see the same inpainting only this time for \(\epsilon = 0.1\) in which the blurring effect has been removed and the method was able to connect the ideal edge seamlessly. 
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.3\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/halfDamaged.jpg}
+    \caption{Initial image to be inpainted.}
+    \label{fig:GLDamagedHalf}
+  \end{subfigure}%
+  \begin{subfigure}{.3\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpHalfEp8.jpg}
+    \caption{GL inpainted \(\epsilon = 0.8\)}
+    \label{fig:GLInpHalfEp8}
+  \end{subfigure}
+  \begin{subfigure}{.3\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpHalfEp1.jpg}
+    \caption{GL inpainted \(\epsilon = 0.1\)}
+    \label{fig:GLInpHalfEp1}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL inpainting model for an ideal edge. Note that the results of the GL model is able to connect the edge for this ideal edge case.}
+  \label{fig:GLHalf}
+\end{figure}
+
+For our second example we consider a slightly less trivial case where the edges don't propagate normal to the boundary of the inpainting region. For this test case we use the same diagonal example as before which can be found in figure \ref{fig:GLDamagedDiag}. We mentioned earlier that one of the benefits of this model is the control in the amount of blurring that happens. We can see the advantage of this in figure \ref{fig:GLInpDiagEp1} compared to the results of figure \ref{fig:GLInpDiagEp01}. The additional blurring of the edges has given us the benefit of concealing how the two edges really meet as seen in figure \ref{fig:GLInpDiagEp01}. It's quite clear from this example that connecting edges is not a strong point of the GL model and we must work around this. In the original publication \cite{GLPaper1} the authors offer an alternative to simply blurring the edges. They mention that applying a few of coherence enhancing diffusion steps can help steer the direction of the inpainting. We will not be discussing this here however and we refer you to the references within \cite{GLPaper1} for details.  
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.3\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/diagDamaged2.jpg}
+    \caption{Initial image to be inpainted.}
+    \label{fig:GLDamagedDiag}
+  \end{subfigure}%
+  \begin{subfigure}{.3\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpDiagEp1.jpg}
+    \caption{GL inpainted \(\epsilon = 0.1\)}
+    \label{fig:GLInpDiagEp1}
+  \end{subfigure}
+  \begin{subfigure}{.3\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpDiagEp01.jpg}
+    \caption{GL inpainted \(\epsilon = 0.01\)}
+    \label{fig:GLInpDiagEp01}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL inpainting model for connecting edges. Note that the results of the GL model appear to propagate edges normal to the boundary.}
+  \label{fig:GLDiag}
+\end{figure}
+
+\subsection{Ginzburg--Landau's squaring of corners}
+As our final example for binary images we will demonstrate the GL model's ability to complete square corners. As we have seen with the previous example the GL model appears to propagate boundary values primarily normal to the boundary when inpainting binary images. This property is further echoed in the examples of this section. 
+
+Our first example can be seen in figure \ref{fig:GLSq1} where we have a square to be inpainted in a square region. The key point with the example is that the center of the inpainting region is located in the interior of the black square. The effect of this, seen in figure \ref{fig:GLInpSq1}, is when the GL model propagates information inward the white region ``collides'' with the black region inside the square creating this edge shortening effect we seen with the TV model. Notice however that the connected ``corners'' of the inpainted square are not on the edges of the inpainting region but instead in the interior of the inpainting region. This is the location where the inward propagating white ``collides'' with the outward propagating black.
+
+In our second example, as seen in figure \ref{fig:GLSq2}, we have shifted the inpainting region such that the center of the inpainting region lies on the would be corner of the black square. In this case we don't see black ``colliding'' with white and we therefore obtain a perfect corner. Comparing this with the TV model the GL model appears to have a little more flexibility in this sense as it is able to both shorten edges and square corners whereas the TV model exclusively shortens edges.
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/SquareDamaged.jpg}
+    \caption{Off center inpainting}
+    \label{fig:GLSq1}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpSQEp01.jpg}
+    \caption{GL inpainted \(\epsilon = 0.01\)}
+    \label{fig:GLInpSq1}
+  \end{subfigure}
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/BISQ2Damaged.jpg}
+    \caption{Centered inpainting}
+    \label{fig:GLSq2}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.5\linewidth]{figures/GLInpSQ2Ep01.jpg}
+    \caption{GL inpainted \(\epsilon = 0.01\)}
+    \label{fig:GLInpSq2}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL model for inpainting a square corner. Notice how this method is able to square the corner or straighten the corner depending on the location of the inpainting region.}
+  \label{fig:GLSq}
+\end{figure}
+
+\section{Model Comparison for Grey Scale Images}
+\label{sec:GreyScale}
+Now that we have discussed both models and demonstrated some of their properties through binary images we are in a good position to inpaint some grey scale images and compare the results. Our first example will be a relatively simple one with localized damage and little texture and can be seen in figure \ref{fig:TrumpGrey}. Both methods produce a pretty high quality inpainting with their results being nearly indistinguishable.
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/trump1Grey.jpg}
+    \caption{Original image}
+    \label{fig:Trump1Grey}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/trump1GreyMask.jpg}
+    \caption{Damaged image}
+    \label{fig:Trump1GreyMask}
+  \end{subfigure}
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/trump1GreyInpTV2.jpg}
+    \caption{TV inpainting}
+    \label{fig:TrumpGreyTV}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/trump1GreyInpGL.jpg}
+    \caption{GL inpainting}
+    \label{fig:TrumpGreyGL}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the TV and GL models for inpainting a simple grey scale image. Notice that the GL model produces a higher quality inpainting in less than half the number of iterations.}
+  \label{fig:TrumpGrey}
+\end{figure}
+
+For our second example we have a considerably more difficult image containing connecting edges, textures, and patterns. In figure \ref{fig:TowerOg} we have the original image for comparison and in figure \ref{fig:TowerDamaged} the damaged image. The TV model does a considerably better job connecting edges compared to that of the GL model this is most noticeable in the cloudy region. Note that we have intentionally chosen a somewhat small value for \(\epsilon\) (0.01) in the GL model to highlight the differences between the two models and the edge effect can be reduced by increasing \(\epsilon.\) The TV model however has a significantly harder time inside the tower compared to that of the GL model. This is likely due to the fact that our discretization of the TV model has difficulties producing sharp edges even though they belong to the solution space. This was seen in section \ref{sec:EdgeShort}. The GL on the other hand has no problem generating sharp edges for small \(\epsilon.\) Both methods fail to give a high quality inpainting within the tower however due to the global patterns and textures present. Since we are dealing with low level local models we cannot expect either method to generate a really high quality result in this region. Again, the edge connecting problem with the GL model can be reduced with some post processing and we refer the reader to \cite{GLPaper1} for details.  
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/tower.jpg}
+    \caption{Original image}
+    \label{fig:TowerOg}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/towerDamaged.jpg}
+    \caption{Damaged image}
+    \label{fig:TowerDamaged}
+  \end{subfigure}
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/towerInpTV.jpg}
+    \caption{TV inpainting}
+    \label{fig:TowerTV}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/towerInpGL.jpg}
+    \caption{GL inpainting}
+    \label{fig:TowerGL}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the TV and GL models for inpainting a complex grey scale image. Notice that the TV inpainting does a significantly better job connecting edges most noticeable in the clouds. The GL model does a much better job inside the tower likely due to its ability to produce high contrast results.}
+  \label{fig:Tower}
+\end{figure}
+
+To summarize, the TV model as a method over all contains more desirable properties than the GL method given that it can connect edges fairly well, has the ability to generate ideal edges and agrees with our visual perception in certain ideal cases. I would not however recommend the discretization used here and in the original publication due to it's difficulty generating ideal edges. I would instead recommend a discretization of the gradient descent problem at the expense of slower convergence due to the increased quality of edges as we mentioned in section \ref{sec:EdgeShort}. The GL model on the other hand converges to a quality inpainting considerably faster while capturing the ideal edges. The pitfall of this method however is its tendency to have kinky edges for which the only control we have is to blur the resultant inpainting. Nevertheless, this method still manages to produce high quality results on real images in a fraction of the time. In addition the kinky edges can be reduced through a few steps of post processing giving this method considerable room for improvement. If we had to pick a favorite method it would be the GL model due to its efficiency and comparable quality results with a rather coarse motivation.    
+
+\section{Ginzburg--Landau For Color Images}
+Typically, when inpainting colored images most models treat each of the RGB channels as separate images to be inpainted. In real world images however the color channels are often not independent and treating them as such can lead to artifacts \cite{GLPaper1}. Thus, a desirable property of an inpainting method would be to couple the inpainting of the channels in someway. For the GL model we can do just that. We can extend the structure of equations \eqref{eq:GL} and \eqref{eq:GLGD} to color images by replacing the length component by an appropriate norm \cite{GLPaper1}. In the original publication \cite{GLPaper1} the authors recommend using the max--norm for RGB images. That is
+\begin{align*}
+  ||I|| = \max\{|I^1|,|I^2|,|I^3|\}
+\end{align*}
+giving us the coupled GL gradient descent equations
+\begin{align*}
+  I_t = \nabla^2 I + \frac{1}{\epsilon^2}\left(1-||I||^2\right)I
+\end{align*}
+with the discretization
+\begin{align*}
+  I^{n+1}_{i,j} = I^n_{i,j} + \Delta t\left[(I^n_{i-1,j} + I^n_{i+1,j} - 4I^n_{i,j} + I^n_{i,j-1} + I^n_{i,j+1}) + \frac{1}{\epsilon^2}(1-||I^n_{i,j}||^2)I^n_{i,j}\right].
+\end{align*}
+
+As a first example of inpainting a color image we have a relatively simple example where the damage is quite local and has very little texture. The results of this example can be found in figure \ref{fig:TrumpColor} and are quite remarkable being nearly indistinguishable from the original. It's only once we zoom in on suspected problem regions that we notice a few issues. In particular with the tooth the issue is likely due to the amount of damage done. In this region the scale of damage has degraded the tooth to the point that propagating information from the boundaries is likely not enough to reconstruct the original. In this sense we can say that this region is not quite local. For the bridge of the nose we have an area of transition to the cheek behind the nose and this transition cannot be rebuilt from boundary information on either side. For this example we have shown both the result of treating each RGB channel separately as well as using the coupled model and what we notice is that there is pretty much no difference in the end result. This has been the case for all examples tested with this method however that is not to say that coupling is not necessary. With most methods treating the RGB channels separately the appearance of artifacts is likely not too common and we were unable to find an example demonstrating this. 
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/trump1.jpg}
+    \caption{Original image}
+    \label{fig:TrumpC}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/trumpDamaged.jpg}
+    \caption{Digitally damaged image}
+    \label{fig:TrumpCD}
+  \end{subfigure}
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/trumpInpSep.jpg}
+    \caption{Separated inpainting}
+    \label{fig:TrumpSep}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/trumpInpSepZoom.jpg}
+    \caption{Zoom in of separated inpainting}
+    \label{fig:TrumpSepZoom}
+  \end{subfigure}\\[1ex]
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/trumpInpCoup.jpg}
+    \caption{Coupled inpainting}
+    \label{fig:TrumpCoup}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/trumpInpCoupZoom.jpg}
+    \caption{Zoom in of coupled inpainting}
+    \label{fig:TrumpCoupZoom}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL model for inpainting a color image of Donald Trump. Notice the high quality inpainting for localized damages. Little discrepancy between the coupled and decoupled methods.}
+  \label{fig:TrumpColor}
+\end{figure}
+
+As a second example we revisit the significantly harder problem of removing the fence from Storm the bear. What makes this example considerably harder is the amount of damage done to the image as well as the textures present. The original image can be found in figure \ref{fig:Storm} with the results of the inpainting found in \ref{fig:StormEp1} and \ref{fig:StormEp8}. What this example truly highlights is the trade off between disconnected edges and a blurry inpainting. For \(\epsilon = 0.1\) we expect a high contrast inpainting but from what we learned from our binary examples the higher the contrast the more kinky the edges which can clearly be seen in figure \ref{fig:StormEp1}. To counteract the kinky edges we can increase the value of \(\epsilon\) at the cost of having a blurrier inpainting. In figure \ref{fig:StormEp8} we have the results of the GL model for \(\epsilon = 0.8\) which as expected decreased the effect of the kinky edges but has produces a blurrier result. In particular on the bears fur we have a stark contrast between the original portions and the inpainted portions. A big part of the reason for this is the textures in the fur which we do not expect local methods to replicate. The blurriness however doesn't help the situation. 
+\begin{figure}[tb!]
+  \centering
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/Storm.jpg}
+    \caption{Original image}
+    \label{fig:Storm}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/StormDamaged.jpg}
+    \caption{Digitally damaged image}
+    \label{fig:StormD}
+  \end{subfigure}
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/StormInpCoupEp1.jpg}
+    \caption{Coupled inpainting \(\epsilon = 0.1\)}
+    \label{fig:StormEp1}
+  \end{subfigure}%
+  \begin{subfigure}{.5\linewidth}
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/StormInpCoupEp8.jpg}
+    \caption{Coupled inpainting \(\epsilon = 0.8\)}
+    \label{fig:StormEp8}
+  \end{subfigure}\\[1ex]
+  \caption{Results of the GL model for inpainting the color image of Storm the bear. Notice the trade off between the disconnected edges and the blurriness of the inpainted output.}
+  \label{fig:StormColor}
+\end{figure}
+
+In summary, the main disadvantage to the GL model is the kinkiness of the resulting edges. The model itself can counteract this at the cost of blurring the result. For localized inpaintings this is not much of a problem as highlighted by the Trump example but for more difficult jobs, such as storm the bear, this drawback is quite noticeable. As we have mentioned before the edge issue can be corrected using some post processing techniques which we refer you to \cite{GLPaper1} and the references within for more information. The benefit of the GL model for colored images is the ability to generalize the model to couple the different colour channels. Although we were unable to present an example where we really saw the benefit of this it doesn't discredit the ability. Finally, another benefit of the GL model is its efficiency. Up to this point we have yet to comment much on the efficiency of either method however through our experiments it was found that the GL model converged considerably faster than that of the TV model. For color images the savings for GL can only get better as there is three times the amount of work. 
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+%\appendix
+%\include{apdxa}
+
+
+\end{document}
+
+
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: t
+%%% End: 
